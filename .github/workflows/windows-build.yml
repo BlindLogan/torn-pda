@@ -1,0 +1,61 @@
+name: Windows test build
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/windows-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.44.0"
+
+jobs:
+  windows:
+    name: Build Windows test package
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Create public configuration stubs
+        shell: pwsh
+        run: |
+          Get-ChildItem lib/config/*.dart.example | ForEach-Object {
+            $target = $_.FullName -replace '\.example$', ''
+            if (-not (Test-Path $target)) { Copy-Item $_.FullName $target }
+          }
+          if (-not (Test-Path lib/firebase_options.dart)) {
+            Copy-Item lib/config/firebase_options.dart.example lib/firebase_options.dart
+          }
+          New-Item -ItemType Directory -Force lib/torn-pda-native/auth | Out-Null
+          New-Item -ItemType Directory -Force lib/torn-pda-native/stats | Out-Null
+          Copy-Item lib/config/native_auth_models.dart.example lib/torn-pda-native/auth/native_auth_models.dart
+          Copy-Item lib/config/native_auth_provider.dart.example lib/torn-pda-native/auth/native_auth_provider.dart
+          Copy-Item lib/config/native_user_provider.dart.example lib/torn-pda-native/auth/native_user_provider.dart
+          Copy-Item lib/config/native_login_widget.dart.example lib/torn-pda-native/auth/native_login_widget.dart
+          Copy-Item lib/config/stats_controller.dart.example lib/torn-pda-native/stats/stats_controller.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Upload runnable application folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torn-PDA-Windows-test
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14
