@@ -22,6 +22,7 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -161,6 +162,11 @@ int kSdkAndroid = 0;
 
 bool _isFirebaseInitialized = false;
 
+// Keep the Windows accessibility bridge alive for screen readers. Without a
+// retained handle, Windows can intermittently expose only the root "Flutter
+// view" after routes or application state change.
+SemanticsHandle? windowsSemanticsHandle;
+
 class ReceivedNotification {
   ReceivedNotification({required this.id, required this.title, required this.body, required this.payload});
 
@@ -174,6 +180,10 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows) {
+    windowsSemanticsHandle = widgetsBinding.ensureSemantics();
+  }
 
   // Drain FCM inboxes saved in background (e.g., stock alerts) into Prefs so we can show them on launch
   await drainFcmInbox();
