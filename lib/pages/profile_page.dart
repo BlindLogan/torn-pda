@@ -2023,50 +2023,60 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         children: <Widget>[
                           const SizedBox(width: 60, child: Text('Energy')),
                           const SizedBox(width: 10),
-                          GestureDetector(
-                            key: _showOne,
-                            onLongPress: () {
-                              _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: false);
-                            },
-                            onTap: () async {
-                              _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true);
-                            },
-                            child: Showcase(
-                              key: _showcaseProfileBars,
-                              title: 'Did you know?',
-                              description:
-                                  '\nTap any of the bars to launch a browser '
-                                  'straight to the gym, crimes or items sections!',
-                              targetPadding: const EdgeInsets.all(10),
-                              disableMovingAnimation: true,
-                              textColor: _themeProvider!.mainText,
-                              tooltipBackgroundColor: _themeProvider!.secondBackground,
-                              descTextStyle: const TextStyle(fontSize: 13),
-                              tooltipPadding: const EdgeInsets.all(20),
-                              child: LinearPercentIndicator(
-                                padding: const EdgeInsets.all(0),
-                                barRadius: const Radius.circular(10),
-                                width: 150,
-                                lineHeight: 20,
-                                progressColor: Colors.green,
-                                backgroundColor: Colors.grey,
-                                center: FittedBox(
-                                  fit: BoxFit.fitWidth,
-                                  child: Text(
-                                    '${_user!.energy!.current}/${_user!.energy!.maximum}',
-                                    style: const TextStyle(color: Colors.black),
+                          Semantics(
+                            button: true,
+                            label:
+                                'Energy ${_user!.energy!.current} of ${_user!.energy!.maximum}. Open gym',
+                            onTap: () => _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true),
+                            child: ExcludeSemantics(
+                              child: InkWell(
+                                canRequestFocus: true,
+                                key: _showOne,
+                                onLongPress: () {
+                                  _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: false);
+                                },
+                                onTap: () async {
+                                  _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true);
+                                },
+                                child: Showcase(
+                                  key: _showcaseProfileBars,
+                                  title: 'Did you know?',
+                                  description:
+                                      '\nTap any of the bars to launch a browser '
+                                      'straight to the gym, crimes or items sections!',
+                                  targetPadding: const EdgeInsets.all(10),
+                                  disableMovingAnimation: true,
+                                  textColor: _themeProvider!.mainText,
+                                  tooltipBackgroundColor: _themeProvider!.secondBackground,
+                                  descTextStyle: const TextStyle(fontSize: 13),
+                                  tooltipPadding: const EdgeInsets.all(20),
+                                  child: LinearPercentIndicator(
+                                    padding: const EdgeInsets.all(0),
+                                    barRadius: const Radius.circular(10),
+                                    width: 150,
+                                    lineHeight: 20,
+                                    progressColor: Colors.green,
+                                    backgroundColor: Colors.grey,
+                                    center: FittedBox(
+                                      fit: BoxFit.fitWidth,
+                                      child: Text(
+                                        '${_user!.energy!.current}/${_user!.energy!.maximum}',
+                                        style: const TextStyle(color: Colors.black),
+                                      ),
+                                    ),
+                                    percent: _user!.energy!.current! / _user!.energy!.maximum! > 1.0
+                                        ? 1.0
+                                        : _user!.energy!.current! / _user!.energy!.maximum!,
                                   ),
                                 ),
-                                percent: _user!.energy!.current! / _user!.energy!.maximum! > 1.0
-                                    ? 1.0
-                                    : _user!.energy!.current! / _user!.energy!.maximum!,
                               ),
                             ),
                           ),
                           if (_warnAboutChains && _chainModel.chain!.current! > 10 && _chainModel.chain!.cooldown == 0)
                             Padding(
                               padding: const EdgeInsets.only(left: 5),
-                              child: GestureDetector(
+                              child: InkWell(
+                                canRequestFocus: true,
                                 onTap: () {
                                   // Open chaining section
                                   widget.callBackSection(DrawerSection.chaining);
@@ -2097,30 +2107,39 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         children: <Widget>[
                           const SizedBox(width: 60, child: Text('Nerve')),
                           const SizedBox(width: 10),
-                          GestureDetector(
-                            onLongPress: () {
-                              _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: false);
-                            },
-                            onTap: () async {
-                              _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true);
-                            },
-                            child: LinearPercentIndicator(
-                              padding: const EdgeInsets.all(0),
-                              barRadius: const Radius.circular(10),
-                              width: 150,
-                              lineHeight: 20,
-                              progressColor: Colors.redAccent,
-                              backgroundColor: Colors.grey,
-                              center: FittedBox(
-                                fit: BoxFit.fitWidth,
-                                child: Text(
-                                  '${_user!.nerve!.current}/${_user!.nerve!.maximum}',
-                                  style: const TextStyle(color: Colors.black),
+                          Semantics(
+                            button: true,
+                            label:
+                                'Nerve ${_user!.nerve!.current} of ${_user!.nerve!.maximum}. Open crimes',
+                            onTap: () =>
+                                _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true),
+                            child: ExcludeSemantics(
+                              child: GestureDetector(
+                                onLongPress: () {
+                                  _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: false);
+                                },
+                                onTap: () async {
+                                  _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true);
+                                },
+                                child: LinearPercentIndicator(
+                                  padding: const EdgeInsets.all(0),
+                                  barRadius: const Radius.circular(10),
+                                  width: 150,
+                                  lineHeight: 20,
+                                  progressColor: Colors.redAccent,
+                                  backgroundColor: Colors.grey,
+                                  center: FittedBox(
+                                    fit: BoxFit.fitWidth,
+                                    child: Text(
+                                      '${_user!.nerve!.current}/${_user!.nerve!.maximum}',
+                                      style: const TextStyle(color: Colors.black),
+                                    ),
+                                  ),
+                                  percent: _user!.nerve!.current! / _user!.nerve!.maximum! > 1.0
+                                      ? 1.0
+                                      : _user!.nerve!.current! / _user!.nerve!.maximum!,
                                 ),
                               ),
-                              percent: _user!.nerve!.current! / _user!.nerve!.maximum! > 1.0
-                                  ? 1.0
-                                  : _user!.nerve!.current! / _user!.nerve!.maximum!,
                             ),
                           ),
                         ],
