@@ -18,7 +18,9 @@ env:
 jobs:
   windows:
     name: Build Windows test package
-    runs-on: windows-latest
+    # The current WebView and notification plugins still use the coroutine
+    # compatibility supported by Visual Studio 2022. VS 2026 rejects it.
+    runs-on: windows-2022
 
     steps:
       - name: Check out source
