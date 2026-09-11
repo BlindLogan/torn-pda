@@ -436,6 +436,9 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
                 if (snapshot.connectionState == ConnectionState.done) {
                   if (_apiGoodData) {
+                    if (Platform.isWindows) {
+                      return _windowsAccessibleHome();
+                    }
                     return RefreshIndicator(
                       onRefresh: () async {
                         _profileApi.resetApiTimer(initCall: true, trigger: "pull-refresh");
@@ -931,6 +934,77 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
               child: StatusIconsWrap(user: _user, openBrowser: _launchBrowser, settingsProvider: _settingsProvider),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _windowsAccessibleHome() {
+    String durationLabel(int? seconds) {
+      if (seconds == null || seconds <= 0) return 'ready';
+      final hours = seconds ~/ 3600;
+      final minutes = (seconds % 3600) ~/ 60;
+      if (hours > 0) return '$hours hours $minutes minutes';
+      return '$minutes minutes';
+    }
+
+    Widget heading(String text) => Semantics(
+      header: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 8),
+        child: Text(text, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      ),
+    );
+
+    Widget action(String label, String url) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ElevatedButton(
+        onPressed: () => _launchBrowser(url: url, shortTap: true),
+        child: Text(label),
+      ),
+    );
+
+    final moneyFormat = NumberFormat('#,##0', 'en_US');
+    final wallet = _user!.moneyOnHand == null ? 'unavailable' : '\$${moneyFormat.format(_user!.moneyOnHand)}';
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh');
+        await Future.delayed(const Duration(seconds: 1));
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        children: [
+          heading('Torn PDA accessible home'),
+          Text('${_user!.name}, level ${_user!.level}'),
+          Text('Status: ${_user!.status!.state}'),
+          Text('Wallet: $wallet'),
+          heading('Bars'),
+          Text('Energy: ${_user!.energy!.current} of ${_user!.energy!.maximum}'),
+          Text('Nerve: ${_user!.nerve!.current} of ${_user!.nerve!.maximum}'),
+          Text('Happy: ${_user!.happy!.current} of ${_user!.happy!.maximum}'),
+          Text('Life: ${_user!.life!.current} of ${_user!.life!.maximum}'),
+          heading('Cooldowns'),
+          Text('Drug cooldown: ${durationLabel(_user!.cooldowns!.drug)}'),
+          Text('Medical cooldown: ${durationLabel(_user!.cooldowns!.medical)}'),
+          Text('Booster cooldown: ${durationLabel(_user!.cooldowns!.booster)}'),
+          heading('Quick access'),
+          action('Open Travel Agency', 'https://www.torn.com/travelagency.php'),
+          action('Open Gym', 'https://www.torn.com/gym.php'),
+          action('Open Crimes', 'https://www.torn.com/crimes.php#/step=main'),
+          action('Open Items', 'https://www.torn.com/item.php'),
+          action('Open Events', 'https://www.torn.com/events.php#/step=all'),
+          action('Open Messages', 'https://www.torn.com/messages.php'),
+          action('Open Faction', 'https://www.torn.com/factions.php?step=your'),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () {
+              _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh-button');
+            },
+            child: const Text('Refresh status'),
+          ),
+          const SizedBox(height: 16),
+          const Text('End of accessible home'),
         ],
       ),
     );
