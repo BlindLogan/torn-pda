@@ -260,10 +260,17 @@ class MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     _mainBrowser = Consumer<WebViewProvider>(
       builder: (context, w, child) {
-        return Visibility(
-          maintainState: true,
-          visible: w.browserShowInForeground || w.webViewSplitActive,
-          child: w.stackView,
+        final browserIsVisible = w.browserShowInForeground || w.webViewSplitActive;
+        return ExcludeFocus(
+          excluding: !browserIsVisible,
+          child: ExcludeSemantics(
+            excluding: !browserIsVisible,
+            child: Visibility(
+              maintainState: true,
+              visible: browserIsVisible,
+              child: w.stackView,
+            ),
+          ),
         );
       },
     );
