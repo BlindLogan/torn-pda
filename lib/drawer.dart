@@ -2413,20 +2413,26 @@ class DrawerPageState extends State<DrawerPage> with WidgetsBindingObserver, Aut
       }
 
       drawerOptions.add(
-        ListTileTheme(
-          selectedColor: Colors.red,
-          iconColor: _themeProvider!.mainText,
-          child: Ink(
-            color: section == _selected ? Colors.grey[300] : Colors.transparent,
-            child: ListTile(
-              leading: Icon(section.icon),
-              title: Text(
-                section.title,
-                style: TextStyle(fontWeight: section == _selected ? FontWeight.bold : FontWeight.normal),
+        Semantics(
+          button: true,
+          selected: section == _selected,
+          label: '${section.title}${section == _selected ? ', selected' : ''}',
+          onTap: () => _onSelectItem(section),
+          child: ListTileTheme(
+              selectedColor: Colors.red,
+              iconColor: _themeProvider!.mainText,
+              child: Ink(
+                color: section == _selected ? Colors.grey[300] : Colors.transparent,
+                child: ListTile(
+                  leading: Icon(section.icon),
+                  title: Text(
+                    section.title,
+                    style: TextStyle(fontWeight: section == _selected ? FontWeight.bold : FontWeight.normal),
+                  ),
+                  selected: section == _selected,
+                  onTap: () => _onSelectItem(section),
+                ),
               ),
-              selected: section == _selected,
-              onTap: () => _onSelectItem(section),
-            ),
           ),
         ),
       );
