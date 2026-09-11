@@ -3348,10 +3348,10 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 onTap: () {
                   _launchBrowser(url: 'https://www.torn.com/events.php#/step=all', shortTap: true);
                 },
-                child: const Semantics(
+                child: Semantics(
                   button: true,
                   label: 'Open all events in Torn',
-                  child: ExcludeSemantics(
+                  child: const ExcludeSemantics(
                     child: Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.open_in_new, size: 18)),
                   ),
                 ),
