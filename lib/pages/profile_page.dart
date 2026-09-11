@@ -411,7 +411,11 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
     return ShowCaseWidget(
       builder: (ctx) {
-        _launchShowCases(ctx);
+        // Showcase overlays are designed for touch navigation and can take
+        // keyboard focus away from Windows screen readers.
+        if (!Platform.isWindows) {
+          _launchShowCases(ctx);
+        }
         return Scaffold(
           backgroundColor: _themeProvider!.canvas,
           drawer: !_webViewProvider.splitScreenAndBrowserLeft() ? const Drawer() : null,
@@ -419,10 +423,15 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           bottomNavigationBar: !_settingsProvider!.appBarTop
               ? SizedBox(height: AppBar().preferredSize.height, child: buildAppBar())
               : null,
-          floatingActionButton: _hideProfileFab ? null : Stack(children: [buildSpeedDial()]),
+          // The mobile speed dial contains dynamically inserted focus targets
+          // that are unreliable with Windows screen readers. Its actions remain
+          // available through the labelled app bar and drawer controls.
+          floatingActionButton: Platform.isWindows || _hideProfileFab ? null : Stack(children: [buildSpeedDial()]),
           body: Container(
             color: _themeProvider!.canvas,
-            child: FutureBuilder(
+            child: FocusTraversalGroup(
+              policy: ReadingOrderTraversalPolicy(),
+              child: FutureBuilder(
               future: _apiFetched,
               builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
                 if (snapshot.connectionState == ConnectionState.done) {
@@ -537,6 +546,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                   );
                 }
               },
+              ),
             ),
           ),
         );
@@ -754,6 +764,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         children: [
           IconButton(
             icon: const Icon(Icons.menu),
+            tooltip: 'Open Torn PDA navigation menu',
             onPressed: () {
               final ScaffoldState? scaffoldState = context.findRootAncestorStateOfType();
               if (scaffoldState != null) {
@@ -827,6 +838,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox.shrink(),
         IconButton(
           icon: Icon(Icons.settings, color: _themeProvider!.buttonText),
+          tooltip: 'Open Profile settings',
           onPressed: () async {
             await Navigator.push(
               context,
@@ -3328,6 +3340,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               const Text('EVENTS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(width: 8),
               InkWell(
+                canRequestFocus: true,
                 borderRadius: BorderRadius.circular(100),
                 onLongPress: () {
                   _launchBrowser(url: "https://www.torn.com/events.php#/step=all", shortTap: false);
@@ -3335,7 +3348,13 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 onTap: () {
                   _launchBrowser(url: 'https://www.torn.com/events.php#/step=all', shortTap: true);
                 },
-                child: const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.open_in_new, size: 18)),
+                child: const Semantics(
+                  button: true,
+                  label: 'Open all events in Torn',
+                  child: ExcludeSemantics(
+                    child: Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.open_in_new, size: 18)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -4571,17 +4590,20 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       final moneyFormat = NumberFormat("#,##0", "en_US");
       return Row(
         children: [
-          GestureDetector(
+          Semantics(
+            button: true,
+            label: 'Wallet, ${moneyFormat.format(_user!.moneyOnHand)} dollars',
+            hint: 'Open wallet details',
+            child: InkWell(
+              canRequestFocus: true,
             onTap: () async {
               _openWalletDialog();
             },
-            child: Semantics(
-              label: 'Wallet icon',
-              value: '',
-              onTapHint: 'Open wallet dialog',
-              child: dense!
+              child: ExcludeSemantics(
+                child: dense!
                   ? const Icon(Icons.account_balance_wallet_rounded, size: 17, color: Colors.brown)
-                  : const Icon(MdiIcons.cash100, color: Colors.green),
+                    : const Icon(MdiIcons.cash100, color: Colors.green),
+              ),
             ),
           ),
           const SizedBox(width: 5),
