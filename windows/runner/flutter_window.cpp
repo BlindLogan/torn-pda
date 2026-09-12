@@ -41,6 +41,10 @@ bool FlutterWindow::OnCreate() {
         if (call.method_name() == "getReport") {
           RecordFocusEvent("report requested");
           result->Success(flutter::EncodableValue(FocusReport()));
+        } else if (call.method_name() == "refreshView") {
+          flutter_controller_->ForceRedraw();
+          RecordFocusEvent("resume redraw requested");
+          result->Success();
         } else {
           result->NotImplemented();
         }
@@ -80,13 +84,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   } else if (message == WM_SIZE) {
     RecordFocusEvent("host resized");
   }
-  // Only the application's Alt+number menu fallthrough is consumed. Keep
-  // Alt+Tab, Alt+Space, Alt+F4 and other Windows system commands intact.
-  if (message == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_KEYMENU &&
-      lparam >= '0' && lparam <= '9') {
-    RecordFocusEvent("host Alt+number menu fallthrough consumed");
-    return 0;
-  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -108,7 +105,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
 std::string FlutterWindow::FocusReport() const {
   std::ostringstream report;
-  report << "Torn PDA focus diagnostic test 7\n"
+  report << "Torn PDA focus diagnostic test 8\n"
          << "Native focus and navigation events only; no account data or typed text.\n";
   for (const auto& event : focus_events_) report << event << '\n';
   return report.str();
@@ -130,7 +127,7 @@ void FlutterWindow::RecordFocusEvent(const std::string& event) {
   if (length == 0 || length >= 32768) return;
   const std::wstring directory = std::wstring(local_data) + L"\\TornPDA";
   CreateDirectoryW(directory.c_str(), nullptr);
-  std::ofstream output(directory + L"\\focus-test7.txt", std::ios::trunc);
+  std::ofstream output(directory + L"\\focus-test8.txt", std::ios::trunc);
   if (output) output << FocusReport();
 }
 
@@ -147,10 +144,6 @@ LRESULT CALLBACK FlutterWindow::DiagnosticChildProc(HWND hwnd, UINT message,
       window->RecordFocusEvent("flutter navigation key=" + std::to_string(wparam) +
           " alt=" + (alt ? "yes" : "no"));
     }
-  }
-  if (message == WM_SYSCHAR && wparam >= '0' && wparam <= '9') {
-    window->RecordFocusEvent("flutter Alt+number system character consumed");
-    return 0;
   }
   if (message == WM_NCDESTROY) {
     RemoveWindowSubclass(hwnd, DiagnosticChildProc, subclass_id);

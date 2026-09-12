@@ -14,6 +14,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:expandable/expandable.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
@@ -170,6 +171,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   final FocusNode _windowsLifeFocus = FocusNode(debugLabel: 'Life');
   final FocusNode _windowsWalletFocus = FocusNode(debugLabel: 'Wallet');
   final List<String> _windowsDiagnosticEvents = [];
+  final GlobalKey _windowsHomeRenderKey = GlobalKey();
   static const _windowsDiagnosticChannel = MethodChannel('torn_pda/windows_focus_diagnostics');
 
   void _recordWindowsDiagnostic(String event) {
@@ -484,8 +486,26 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       _recordWindowsDiagnostic('lifecycle ${state.name}');
       if (state == AppLifecycleState.resumed) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _windowsEnergyFocus.requestFocus();
+          if (!mounted || ModalRoute.of(context)?.isCurrent != true ||
+              !_apiGoodData || _webViewProvider.browserShowInForeground) return;
+          _windowsEnergyFocus.requestFocus();
+          // Experiment: refresh attached accessibility descriptions in place,
+          // preserving the controls and their semantic identities.
+          final root = _windowsHomeRenderKey.currentContext?.findRenderObject();
+          var count = 0;
+          void refresh(RenderObject object) {
+            if (!object.attached) return;
+            object.markNeedsSemanticsUpdate();
+            count++;
+            object.visitChildren(refresh);
+          }
+          if (root != null) refresh(root);
+          _recordWindowsDiagnostic('resume semantics refresh requested objects=$count');
+          _windowsDiagnosticChannel.invokeMethod<void>('refreshView').catchError((Object error) {
+            _recordWindowsDiagnostic('resume redraw channel unavailable');
+          });
         });
+        WidgetsBinding.instance.scheduleFrame();
       }
       return;
     }
@@ -511,9 +531,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         if (!Platform.isWindows) {
           _launchShowCases(ctx);
         }
-        return CallbackShortcuts(
-          bindings: Platform.isWindows ? _windowsShortcutBindings() : <ShortcutActivator, VoidCallback>{},
-          child: Scaffold(
+        return Scaffold(
           backgroundColor: _themeProvider!.canvas,
           drawer: !_webViewProvider.splitScreenAndBrowserLeft() ? const Drawer() : null,
           appBar: _settingsProvider!.appBarTop ? buildAppBar() : null,
@@ -648,7 +666,6 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               },
               ),
             ),
-          ),
           ),
         );
       },
@@ -1080,7 +1097,9 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         ? 'Travel status: ${_user!.status!.state}'
         : 'Travel status: $statusDescription';
 
-    return Focus(
+    return CallbackShortcuts(
+      bindings: _windowsShortcutBindings(),
+      child: Focus(
       canRequestFocus: false,
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent && (event.logicalKey == LogicalKeyboardKey.tab ||
@@ -1091,6 +1110,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         return KeyEventResult.ignored;
       },
       child: RefreshIndicator(
+        key: _windowsHomeRenderKey,
         onRefresh: () async {
           _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh');
           await Future.delayed(const Duration(seconds: 1));
@@ -1175,6 +1195,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox(height: 16),
           const Text('End of accessible home'),
         ],
+      ),
       ),
       ),
     );
