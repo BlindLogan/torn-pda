@@ -109,6 +109,7 @@ class DrawerSectionsPageState extends State<DrawerSectionsPage> {
           title: const Text('Drawer Sections'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back and save drawer sections',
             onPressed: () {
               _save();
               Navigator.of(context).pop();
@@ -159,7 +160,7 @@ class DrawerSectionsPageState extends State<DrawerSectionsPage> {
               key: ValueKey(section.name),
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: ListTile(
-                leading: Icon(section.icon),
+                leading: ExcludeSemantics(child: Icon(section.icon)),
                 title: Text(section.title),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -170,10 +171,13 @@ class DrawerSectionsPageState extends State<DrawerSectionsPage> {
                           isVisible ? Icons.visibility : Icons.visibility_off,
                           color: isVisible ? null : Colors.grey,
                         ),
-                        tooltip: isVisible ? 'Hide' : 'Show',
+                        tooltip: '${isVisible ? 'Hide' : 'Show'} ${section.title}',
                         onPressed: () => _toggleVisibility(section),
                       ),
-                    const Icon(Icons.drag_handle),
+                    Semantics(
+                      label: 'Drag to reorder ${section.title}',
+                      child: const Icon(Icons.drag_handle),
+                    ),
                   ],
                 ),
                 tileColor: !isVisible ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08) : null,

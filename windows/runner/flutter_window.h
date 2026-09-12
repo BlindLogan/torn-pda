@@ -5,6 +5,12 @@
 #include <flutter/flutter_view_controller.h>
 
 #include <memory>
+#include <deque>
+#include <string>
+#include <flutter/method_channel.h>
+#include <flutter/encodable_value.h>
+#include <windows.h>
+#include <commctrl.h>
 
 #include "win32_window.h"
 
@@ -23,6 +29,13 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  void RecordFocusEvent(const std::string& event);
+  std::string FocusReport() const;
+  static LRESULT CALLBACK DiagnosticChildProc(HWND hwnd, UINT message,
+      WPARAM wparam, LPARAM lparam, UINT_PTR subclass_id,
+      DWORD_PTR reference_data);
+  std::deque<std::string> focus_events_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> diagnostic_channel_;
   // The project to run.
   flutter::DartProject project_;
 
