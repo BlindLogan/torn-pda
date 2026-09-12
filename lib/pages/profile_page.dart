@@ -169,6 +169,58 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   final FocusNode _windowsMedicalFocus = FocusNode(debugLabel: 'Medical cooldown');
   final FocusNode _windowsLifeFocus = FocusNode(debugLabel: 'Life');
   final FocusNode _windowsWalletFocus = FocusNode(debugLabel: 'Wallet');
+  final List<String> _windowsDiagnosticEvents = [];
+  static const _windowsDiagnosticChannel = MethodChannel('torn_pda/windows_focus_diagnostics');
+
+  void _recordWindowsDiagnostic(String event) {
+    _windowsDiagnosticEvents.add('${DateTime.now().toUtc().toIso8601String()} $event');
+    if (_windowsDiagnosticEvents.length > 200) _windowsDiagnosticEvents.removeAt(0);
+  }
+
+  Map<ShortcutActivator, VoidCallback> _windowsShortcutBindings() {
+    final nodes = <FocusNode>[
+      _windowsWalletFocus, _windowsEnergyFocus, _windowsNerveFocus,
+      _windowsOcFocus, _windowsRankedWarFocus, _windowsTravelFocus,
+      _windowsBoosterFocus, _windowsDrugFocus, _windowsMedicalFocus, _windowsLifeFocus,
+    ];
+    final keys = <LogicalKeyboardKey>[
+      LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7, LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ];
+    return {
+      for (var index = 0; index < nodes.length; index++)
+        SingleActivator(keys[index], alt: true): () {
+          _recordWindowsDiagnostic('shortcut Alt+$index received');
+          if (_apiGoodData && !_webViewProvider.browserShowInForeground) {
+            nodes[index].requestFocus();
+          }
+        },
+    };
+  }
+
+  Future<void> _copyWindowsDiagnostics() async {
+    _recordWindowsDiagnostic('copy diagnostic requested');
+    String nativeReport;
+    try {
+      nativeReport = await _windowsDiagnosticChannel.invokeMethod<String>('getReport') ?? 'Native report empty';
+    } catch (_) {
+      nativeReport = 'Native diagnostic channel unavailable';
+    }
+    await Clipboard.setData(ClipboardData(
+      text: '$nativeReport\nFlutter events (no account data):\n${_windowsDiagnosticEvents.join('\n')}',
+    ));
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Diagnostic report copied'),
+        content: const Text('Paste the report into this chat or Notepad. It contains focus and navigation events, not your API key or account information.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
 
   late int _travelNotificationAhead;
   late int _travelAlarmAhead;
@@ -347,6 +399,20 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    if (Platform.isWindows) {
+      final nodes = <FocusNode>[
+        _windowsEnergyFocus, _windowsNerveFocus, _windowsOcFocus,
+        _windowsRankedWarFocus, _windowsTravelFocus, _windowsBoosterFocus,
+        _windowsDrugFocus, _windowsMedicalFocus, _windowsLifeFocus, _windowsWalletFocus,
+      ];
+      for (var index = 0; index < nodes.length; index++) {
+        final node = nodes[index];
+        final id = index;
+        node.addListener(() => _recordWindowsDiagnostic('status control $id focused=${node.hasFocus}'));
+      }
+      _recordWindowsDiagnostic('home diagnostics started');
+    }
+
     _retrievePendingNotifications();
 
     _profileApi.activate(
@@ -415,6 +481,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   @override
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
     if (Platform.isWindows) {
+      _recordWindowsDiagnostic('lifecycle ${state.name}');
       if (state == AppLifecycleState.resumed) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _windowsEnergyFocus.requestFocus();
@@ -444,7 +511,9 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         if (!Platform.isWindows) {
           _launchShowCases(ctx);
         }
-        return Scaffold(
+        return CallbackShortcuts(
+          bindings: Platform.isWindows ? _windowsShortcutBindings() : <ShortcutActivator, VoidCallback>{},
+          child: Scaffold(
           backgroundColor: _themeProvider!.canvas,
           drawer: !_webViewProvider.splitScreenAndBrowserLeft() ? const Drawer() : null,
           appBar: _settingsProvider!.appBarTop ? buildAppBar() : null,
@@ -579,6 +648,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               },
               ),
             ),
+          ),
           ),
         );
       },
@@ -1010,18 +1080,15 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         ? 'Travel status: ${_user!.status!.state}'
         : 'Travel status: $statusDescription';
 
-    return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.digit1, alt: true): _windowsEnergyFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit2, alt: true): _windowsNerveFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit3, alt: true): _windowsOcFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit4, alt: true): _windowsRankedWarFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit5, alt: true): _windowsTravelFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit6, alt: true): _windowsBoosterFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit7, alt: true): _windowsDrugFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit8, alt: true): _windowsMedicalFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit9, alt: true): _windowsLifeFocus.requestFocus,
-        const SingleActivator(LogicalKeyboardKey.digit0, alt: true): _windowsWalletFocus.requestFocus,
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent && (event.logicalKey == LogicalKeyboardKey.tab ||
+            event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.arrowDown ||
+            event.logicalKey == LogicalKeyboardKey.arrowUp)) {
+          _recordWindowsDiagnostic('Flutter navigation key ${event.logicalKey.keyLabel}');
+        }
+        return KeyEventResult.ignored;
       },
       child: RefreshIndicator(
         onRefresh: () async {
@@ -1099,6 +1166,11 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh-button');
             },
             child: const Text('Refresh status'),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _copyWindowsDiagnostics,
+            child: const Text('Copy focus diagnostic report'),
           ),
           const SizedBox(height: 16),
           const Text('End of accessible home'),
