@@ -208,7 +208,19 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      // Do not try to retain focus while Windows is deactivating this app.
+      // Doing so can leave the Flutter child HWND without usable keyboard or
+      // accessibility focus after an Alt+Tab round trip.
+      if (LOWORD(wparam) != WA_INACTIVE && child_content_ != nullptr) {
+        SetFocus(child_content_);
+      }
+      return 0;
+
+    case WM_SETFOCUS:
+      // The top-level window can receive focus independently of its Flutter
+      // child. Always hand focus back to the child so keyboard navigation and
+      // UI Automation resume together.
+      if (child_content_ != nullptr && GetFocus() != child_content_) {
         SetFocus(child_content_);
       }
       return 0;
