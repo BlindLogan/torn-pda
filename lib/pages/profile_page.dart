@@ -159,6 +159,17 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   final UserController _u = Get.find<UserController>();
   final WarController _w = Get.find<WarController>();
 
+  final FocusNode _windowsEnergyFocus = FocusNode(debugLabel: 'Energy');
+  final FocusNode _windowsNerveFocus = FocusNode(debugLabel: 'Nerve');
+  final FocusNode _windowsOcFocus = FocusNode(debugLabel: 'Organised Crime');
+  final FocusNode _windowsRankedWarFocus = FocusNode(debugLabel: 'Ranked War');
+  final FocusNode _windowsTravelFocus = FocusNode(debugLabel: 'Travel');
+  final FocusNode _windowsBoosterFocus = FocusNode(debugLabel: 'Booster cooldown');
+  final FocusNode _windowsDrugFocus = FocusNode(debugLabel: 'Drug cooldown');
+  final FocusNode _windowsMedicalFocus = FocusNode(debugLabel: 'Medical cooldown');
+  final FocusNode _windowsLifeFocus = FocusNode(debugLabel: 'Life');
+  final FocusNode _windowsWalletFocus = FocusNode(debugLabel: 'Wallet');
+
   late int _travelNotificationAhead;
   late int _travelAlarmAhead;
   late int _travelTimerAhead;
@@ -388,12 +399,29 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     _profileApi.deactivate();
     _browserHasClosedSubscription.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _windowsEnergyFocus.dispose();
+    _windowsNerveFocus.dispose();
+    _windowsOcFocus.dispose();
+    _windowsRankedWarFocus.dispose();
+    _windowsTravelFocus.dispose();
+    _windowsBoosterFocus.dispose();
+    _windowsDrugFocus.dispose();
+    _windowsMedicalFocus.dispose();
+    _windowsLifeFocus.dispose();
+    _windowsWalletFocus.dispose();
     super.dispose();
   }
 
   @override
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (Platform.isWindows) return;
+    if (Platform.isWindows) {
+      if (state == AppLifecycleState.resumed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _windowsEnergyFocus.requestFocus();
+        });
+      }
+      return;
+    }
 
     if (state == AppLifecycleState.resumed) {
       _profileApi.resetApiTimer(initCall: false, trigger: "lifecycle-resume");
@@ -956,38 +984,107 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       ),
     );
 
-    Widget action(String label, String url) => Padding(
+    Widget action(String label, String url, {FocusNode? focusNode}) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: ElevatedButton(
+        focusNode: focusNode,
         onPressed: () => _launchBrowser(url: url, shortTap: true),
         child: Text(label),
+      ),
+    );
+
+    Widget information(String label, {FocusNode? focusNode, VoidCallback? onPressed}) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: OutlinedButton(
+        focusNode: focusNode,
+        onPressed: onPressed ?? () {},
+        child: Align(alignment: Alignment.centerLeft, child: Text(label)),
       ),
     );
 
     final moneyFormat = NumberFormat('#,##0', 'en_US');
     final wallet = _user!.moneyOnHand == null ? 'unavailable' : '\$${moneyFormat.format(_user!.moneyOnHand)}';
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh');
-        await Future.delayed(const Duration(seconds: 1));
+    final statusDescription = _user!.status!.description?.trim();
+    final travelLabel = statusDescription == null || statusDescription.isEmpty
+        ? 'Travel status: ${_user!.status!.state}'
+        : 'Travel status: $statusDescription';
+
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.digit1, alt: true): _windowsEnergyFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit2, alt: true): _windowsNerveFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit3, alt: true): _windowsOcFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit4, alt: true): _windowsRankedWarFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit5, alt: true): _windowsTravelFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit6, alt: true): _windowsBoosterFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit7, alt: true): _windowsDrugFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit8, alt: true): _windowsMedicalFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit9, alt: true): _windowsLifeFocus.requestFocus,
+        const SingleActivator(LogicalKeyboardKey.digit0, alt: true): _windowsWalletFocus.requestFocus,
       },
-      child: ListView(
+      child: RefreshIndicator(
+        onRefresh: () async {
+          _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh');
+          await Future.delayed(const Duration(seconds: 1));
+        },
+        child: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
         children: [
           heading('Torn PDA accessible home'),
-          Text('${_user!.name}, level ${_user!.level}'),
-          Text('Status: ${_user!.status!.state}'),
-          Text('Wallet: $wallet'),
+          information('${_user!.name}, level ${_user!.level}', onPressed: () {
+            _launchBrowser(url: 'https://www.torn.com/profiles.php?XID=${_user!.playerId}', shortTap: true);
+          }),
+          information('Status: ${_user!.status!.state}'),
+          information('Wallet: $wallet', focusNode: _windowsWalletFocus, onPressed: _openWalletDialog),
           heading('Bars'),
-          Text('Energy: ${_user!.energy!.current} of ${_user!.energy!.maximum}'),
-          Text('Nerve: ${_user!.nerve!.current} of ${_user!.nerve!.maximum}'),
-          Text('Happy: ${_user!.happy!.current} of ${_user!.happy!.maximum}'),
-          Text('Life: ${_user!.life!.current} of ${_user!.life!.maximum}'),
+          information(
+            'Energy: ${_user!.energy!.current} of ${_user!.energy!.maximum}. Alt plus 1',
+            focusNode: _windowsEnergyFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true),
+          ),
+          information(
+            'Nerve: ${_user!.nerve!.current} of ${_user!.nerve!.maximum}. Alt plus 2',
+            focusNode: _windowsNerveFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true),
+          ),
+          information('Happy: ${_user!.happy!.current} of ${_user!.happy!.maximum}'),
+          information(
+            'Life: ${_user!.life!.current} of ${_user!.life!.maximum}. Alt plus 9',
+            focusNode: _windowsLifeFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/item.php#medical-items', shortTap: true),
+          ),
           heading('Cooldowns'),
-          Text('Drug cooldown: ${durationLabel(_user!.cooldowns!.drug)}'),
-          Text('Medical cooldown: ${durationLabel(_user!.cooldowns!.medical)}'),
-          Text('Booster cooldown: ${durationLabel(_user!.cooldowns!.booster)}'),
+          information(
+            'Drug cooldown: ${durationLabel(_user!.cooldowns!.drug)}. Alt plus 7',
+            focusNode: _windowsDrugFocus,
+          ),
+          information(
+            'Medical cooldown: ${durationLabel(_user!.cooldowns!.medical)}. Alt plus 8',
+            focusNode: _windowsMedicalFocus,
+          ),
+          information(
+            'Booster cooldown: ${durationLabel(_user!.cooldowns!.booster)}. Alt plus 6',
+            focusNode: _windowsBoosterFocus,
+          ),
+          heading('Faction and travel'),
+          information(
+            '${_windowsOrganisedCrimeLabel()}. Alt plus 3',
+            focusNode: _windowsOcFocus,
+            onPressed: () =>
+                _launchBrowser(url: 'https://www.torn.com/factions.php?step=your#/tab=crimes', shortTap: true),
+          ),
+          information(
+            '${_windowsRankedWarLabel()}. Alt plus 4',
+            focusNode: _windowsRankedWarFocus,
+            onPressed: () =>
+                _launchBrowser(url: 'https://www.torn.com/factions.php?step=your#/war/rank', shortTap: true),
+          ),
+          information(
+            '$travelLabel. Alt plus 5',
+            focusNode: _windowsTravelFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/travelagency.php', shortTap: true),
+          ),
           heading('Quick access'),
           action('Open Travel Agency', 'https://www.torn.com/travelagency.php'),
           action('Open Gym', 'https://www.torn.com/gym.php'),
@@ -1007,7 +1104,47 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const Text('End of accessible home'),
         ],
       ),
+      ),
     );
+  }
+
+  String _windowsOrganisedCrimeLabel() {
+    try {
+      final dynamic data = _oc2Model?.organizedCrime;
+      if (data is Map<String, dynamic>) {
+        final name = data['name']?.toString() ?? 'unnamed crime';
+        final slots = data['slots'];
+        String role = '';
+        String chance = '';
+        if (slots is List) {
+          for (final dynamic slot in slots) {
+            if (slot is Map && slot['user'] is Map && slot['user']['id'] == UserHelper.playerId) {
+              role = slot['position']?.toString() ?? '';
+              chance = slot['checkpoint_pass_rate']?.toString() ?? '';
+              break;
+            }
+          }
+        }
+        return 'Organised Crime: $name${role.isEmpty ? '' : ', role $role'}${chance.isEmpty ? '' : ', $chance percent pass rate'}';
+      }
+      if (_ocFinalStringLong.isNotEmpty) return 'Organised Crime: $_ocFinalStringLong';
+    } catch (_) {}
+    return 'Organised Crime: no information';
+  }
+
+  String _windowsRankedWarLabel() {
+    final war = _factionRankedWar?.war;
+    if (war == null) return 'Ranked War: no information';
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (war.end != null && war.end! > 0 && war.end! <= now) return 'Ranked War: ended';
+    if (war.start != null && war.start! > now) {
+      final remaining = war.start! - now;
+      final days = remaining ~/ 86400;
+      final hours = (remaining % 86400) ~/ 3600;
+      final minutes = (remaining % 3600) ~/ 60;
+      return 'Ranked War: starts in ${days > 0 ? '$days days ' : ''}$hours hours $minutes minutes';
+    }
+    return 'Ranked War: active';
   }
 
   Widget _shortcutsCarrousel() {
