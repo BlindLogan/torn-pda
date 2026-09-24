@@ -78,11 +78,36 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
   if (message == WM_ACTIVATE) {
-    RecordFocusEvent(LOWORD(wparam) == WA_INACTIVE ? "host deactivate" : "host activate");
+    const bool inactive = LOWORD(wparam) == WA_INACTIVE;
+    RecordFocusEvent(inactive ? "host deactivate" : "host activate");
+    if (inactive) {
+      has_deactivated_ = true;
+    } else if (has_deactivated_) {
+      PostMessage(hwnd, WM_APP + 19, 0, 0);
+    }
   } else if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
     RecordFocusEvent(message == WM_SETFOCUS ? "host focus gained" : "host focus lost");
   } else if (message == WM_SIZE) {
     RecordFocusEvent("host resized");
+  }
+  if (message == WM_APP + 19 && flutter_controller_) {
+    const HWND view = flutter_controller_->view()->GetNativeWindow();
+    RECT bounds;
+    if (GetClientRect(hwnd, &bounds)) {
+      const int width = bounds.right - bounds.left;
+      const int height = bounds.bottom - bounds.top;
+      if (width > 1 && height > 0) {
+        // A real resize reliably restores JAWS. Resize only Flutter's child
+        // surface by one pixel and immediately restore it, leaving the visible
+        // application window unchanged.
+        SetWindowPos(view, nullptr, 0, 0, width - 1, height,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+        SetWindowPos(view, nullptr, 0, 0, width, height,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+        RecordFocusEvent("child surface accessibility refresh");
+      }
+    }
+    return 0;
   }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
@@ -105,7 +130,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
 std::string FlutterWindow::FocusReport() const {
   std::ostringstream report;
-  report << "Torn PDA focus diagnostic test 8\n"
+  report << "Torn PDA focus diagnostic test 9\n"
          << "Native focus and navigation events only; no account data or typed text.\n";
   for (const auto& event : focus_events_) report << event << '\n';
   return report.str();
@@ -127,7 +152,7 @@ void FlutterWindow::RecordFocusEvent(const std::string& event) {
   if (length == 0 || length >= 32768) return;
   const std::wstring directory = std::wstring(local_data) + L"\\TornPDA";
   CreateDirectoryW(directory.c_str(), nullptr);
-  std::ofstream output(directory + L"\\focus-test8.txt", std::ios::trunc);
+  std::ofstream output(directory + L"\\focus-test9.txt", std::ios::trunc);
   if (output) output << FocusReport();
 }
 
@@ -144,6 +169,19 @@ LRESULT CALLBACK FlutterWindow::DiagnosticChildProc(HWND hwnd, UINT message,
       window->RecordFocusEvent("flutter navigation key=" + std::to_string(wparam) +
           " alt=" + (alt ? "yes" : "no"));
     }
+    if (message == WM_SYSKEYDOWN && alt && wparam >= '0' && wparam <= '9') {
+      if (window->diagnostic_channel_) {
+        window->diagnostic_channel_->InvokeMethod(
+            "altNumber",
+            std::make_unique<flutter::EncodableValue>(
+                static_cast<int>(wparam - '0')));
+      }
+      window->RecordFocusEvent("native Alt+number dispatched");
+      return 0;
+    }
+  } else if (message == WM_SYSCHAR && wparam >= '0' && wparam <= '9') {
+    // The shortcut was handled above, so prevent Windows' menu-error ding.
+    return 0;
   }
   if (message == WM_NCDESTROY) {
     RemoveWindowSubclass(hwnd, DiagnosticChildProc, subclass_id);

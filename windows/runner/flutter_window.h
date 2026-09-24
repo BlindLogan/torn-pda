@@ -36,6 +36,7 @@ class FlutterWindow : public Win32Window {
       DWORD_PTR reference_data);
   std::deque<std::string> focus_events_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> diagnostic_channel_;
+  bool has_deactivated_ = false;
   // The project to run.
   flutter::DartProject project_;
 

@@ -179,12 +179,23 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     if (_windowsDiagnosticEvents.length > 200) _windowsDiagnosticEvents.removeAt(0);
   }
 
+  List<FocusNode> get _windowsStatusNodes => <FocusNode>[
+    _windowsWalletFocus, _windowsEnergyFocus, _windowsNerveFocus,
+    _windowsOcFocus, _windowsRankedWarFocus, _windowsTravelFocus,
+    _windowsBoosterFocus, _windowsDrugFocus, _windowsMedicalFocus, _windowsLifeFocus,
+  ];
+
+  void _activateWindowsStatusShortcut(int index, {required String source}) {
+    _recordWindowsDiagnostic('$source Alt+$index received');
+    final nodes = _windowsStatusNodes;
+    if (index >= 0 && index < nodes.length &&
+        _apiGoodData && !_webViewProvider.browserShowInForeground) {
+      nodes[index].requestFocus();
+    }
+  }
+
   Map<ShortcutActivator, VoidCallback> _windowsShortcutBindings() {
-    final nodes = <FocusNode>[
-      _windowsWalletFocus, _windowsEnergyFocus, _windowsNerveFocus,
-      _windowsOcFocus, _windowsRankedWarFocus, _windowsTravelFocus,
-      _windowsBoosterFocus, _windowsDrugFocus, _windowsMedicalFocus, _windowsLifeFocus,
-    ];
+    final nodes = _windowsStatusNodes;
     final keys = <LogicalKeyboardKey>[
       LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
       LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
@@ -193,12 +204,8 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     ];
     return {
       for (var index = 0; index < nodes.length; index++)
-        SingleActivator(keys[index], alt: true): () {
-          _recordWindowsDiagnostic('shortcut Alt+$index received');
-          if (_apiGoodData && !_webViewProvider.browserShowInForeground) {
-            nodes[index].requestFocus();
-          }
-        },
+        SingleActivator(keys[index], alt: true): () =>
+            _activateWindowsStatusShortcut(index, source: 'Flutter shortcut'),
     };
   }
 
@@ -412,6 +419,11 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         final id = index;
         node.addListener(() => _recordWindowsDiagnostic('status control $id focused=${node.hasFocus}'));
       }
+      _windowsDiagnosticChannel.setMethodCallHandler((call) async {
+        if (call.method == 'altNumber' && call.arguments is int) {
+          _activateWindowsStatusShortcut(call.arguments as int, source: 'native shortcut');
+        }
+      });
       _recordWindowsDiagnostic('home diagnostics started');
     }
 
@@ -477,6 +489,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     _windowsMedicalFocus.dispose();
     _windowsLifeFocus.dispose();
     _windowsWalletFocus.dispose();
+    if (Platform.isWindows) _windowsDiagnosticChannel.setMethodCallHandler(null);
     super.dispose();
   }
 
