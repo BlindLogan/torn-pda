@@ -2,46 +2,38 @@
 #define RUNNER_FLUTTER_WINDOW_H_
 
 #include <flutter/dart_project.h>
-#include <flutter/flutter_view_controller.h>
-
-#include <memory>
-#include <deque>
-#include <string>
-#include <flutter/method_channel.h>
 #include <flutter/encodable_value.h>
-#include <windows.h>
+#include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+
 #include <commctrl.h>
+#include <memory>
+#include <windows.h>
 
 #include "win32_window.h"
 
-// A window that does nothing but host a Flutter view.
+// A window that hosts the Flutter view and provides Windows accessibility
+// keyboard handling that remains reliable after the app is reactivated.
 class FlutterWindow : public Win32Window {
  public:
-  // Creates a new FlutterWindow hosting a Flutter view running |project|.
   explicit FlutterWindow(const flutter::DartProject& project);
   virtual ~FlutterWindow();
 
  protected:
-  // Win32Window:
   bool OnCreate() override;
   void OnDestroy() override;
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
  private:
-  void RecordFocusEvent(const std::string& event);
-  std::string FocusReport() const;
-  static LRESULT CALLBACK DiagnosticChildProc(HWND hwnd, UINT message,
-      WPARAM wparam, LPARAM lparam, UINT_PTR subclass_id,
-      DWORD_PTR reference_data);
-  std::deque<std::string> focus_events_;
-  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> diagnostic_channel_;
-  bool has_deactivated_ = false;
-  // The project to run.
-  flutter::DartProject project_;
+  static LRESULT CALLBACK AccessibilityChildProc(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam,
+      UINT_PTR subclass_id, DWORD_PTR reference_data);
 
-  // The Flutter instance hosted by this window.
+  flutter::DartProject project_;
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      accessibility_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
