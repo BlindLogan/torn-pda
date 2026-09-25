@@ -15,6 +15,7 @@ import 'package:get/get.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:torn_pda/drawer.dart';
 // Project imports:
 import 'package:torn_pda/main.dart';
@@ -302,10 +303,37 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
     _updateInformation();
   }
 
-  Future<void> _windowsOpenForeignStocks() async {
+  Future<void> _windowsOpenTravelAgencyExternal() async {
+    final opened = await launchUrl(
+      Uri.parse('https://www.torn.com/travelagency.php'),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unable to open Travel Agency'),
+          content: const Text(
+            'Open https://www.torn.com/travelagency.php in your web browser.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _windowsOpenForeignStocks(String country) async {
     final result = await Navigator.of(context).push<ReturnFlagPressed>(
       MaterialPageRoute(
-        builder: (context) => ForeignStockPage(apiKey: _myCurrentKey),
+        builder: (context) => ForeignStockPage(
+          apiKey: _myCurrentKey,
+          temporaryDestinationCountry: country,
+        ),
       ),
     );
     if (result != null) await _onStocksPageClosed(result);
@@ -414,8 +442,8 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
 
     if (_myCurrentKey != '' && !_apiError && !_travelModel.abroad) {
       items.add(_windowsTravelButton(
-        'Open Torn travel agency',
-        () => _windowsOpenTorn('https://www.torn.com/travelagency.php'),
+        'Open Torn Travel Agency in your default web browser',
+        _windowsOpenTravelAgencyExternal,
       ));
     } else {
       items.add(_windowsTravelButton(
@@ -424,10 +452,17 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
       ));
     }
 
-    items.add(_windowsTravelButton(
-      'View overseas item stock levels',
-      _windowsOpenForeignStocks,
-    ));
+    final currentCountry = _travelModel.destination;
+    final arrivedOverseas = _travelModel.abroad &&
+        currentCountry != null &&
+        currentCountry != 'Torn' &&
+        (_travelModel.timeLeft ?? 0) < 15;
+    if (arrivedOverseas) {
+      items.add(_windowsTravelButton(
+        'View items available in $currentCountry',
+        () => _windowsOpenForeignStocks(currentCountry!),
+      ));
+    }
 
     if (_travelModel.abroad && (_travelModel.timeLeft ?? 0) > 120) {
       items.add(_windowsTravelButton(
