@@ -476,10 +476,10 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
         future: _finishedLoadingPreferences,
         builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(
+            return Center(
               child: Semantics(
                 label: 'Loading travel information',
-                child: CircularProgressIndicator(),
+                child: const CircularProgressIndicator(),
               ),
             );
           }
