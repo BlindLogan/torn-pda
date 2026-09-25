@@ -460,7 +460,7 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
     if (arrivedOverseas) {
       items.add(_windowsTravelButton(
         'View items available in $currentCountry',
-        () => _windowsOpenForeignStocks(currentCountry!),
+        () => _windowsOpenForeignStocks(currentCountry),
       ));
     }
 
