@@ -14,6 +14,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:expandable/expandable.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -171,6 +172,8 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   final FocusNode _windowsLifeFocus = FocusNode(debugLabel: 'Life');
   final FocusNode _windowsWalletFocus = FocusNode(debugLabel: 'Wallet');
   final List<String> _windowsDiagnosticEvents = [];
+  bool _windowsWasInactive = false;
+  bool _windowsExplicitFocusAnnouncements = false;
   final GlobalKey _windowsHomeRenderKey = GlobalKey();
   static const _windowsDiagnosticChannel = MethodChannel('torn_pda/windows_focus_diagnostics');
 
@@ -207,6 +210,16 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         SingleActivator(keys[index], alt: true): () =>
             _activateWindowsStatusShortcut(index, source: 'Flutter shortcut'),
     };
+  }
+
+  void _announceWindowsFocusedControl(String label, bool focused) {
+    if (!focused || !_windowsExplicitFocusAnnouncements || !mounted) return;
+    _recordWindowsDiagnostic('explicit focused-control announcement sent');
+    unawaited(SemanticsService.sendAnnouncement(
+      View.of(context),
+      label,
+      Directionality.of(context),
+    ));
   }
 
   Future<void> _copyWindowsDiagnostics() async {
@@ -497,7 +510,14 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
     if (Platform.isWindows) {
       _recordWindowsDiagnostic('lifecycle ${state.name}');
+      if (state == AppLifecycleState.inactive) {
+        _windowsWasInactive = true;
+      }
       if (state == AppLifecycleState.resumed) {
+        if (_windowsWasInactive) {
+          _windowsExplicitFocusAnnouncements = true;
+          _recordWindowsDiagnostic('explicit focus announcements enabled');
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || ModalRoute.of(context)?.isCurrent != true ||
               !_apiGoodData || _webViewProvider.browserShowInForeground) return;
@@ -1084,21 +1104,34 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       ),
     );
 
+    Widget focusAnnouncer(String label, Widget child) => Focus(
+      canRequestFocus: false,
+      descendantsAreFocusable: true,
+      onFocusChange: (focused) => _announceWindowsFocusedControl(label, focused),
+      child: child,
+    );
+
     Widget action(String label, String url, {FocusNode? focusNode}) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: ElevatedButton(
-        focusNode: focusNode,
-        onPressed: () => _launchBrowser(url: url, shortTap: true),
-        child: Text(label),
+      child: focusAnnouncer(
+        label,
+        ElevatedButton(
+          focusNode: focusNode,
+          onPressed: () => _launchBrowser(url: url, shortTap: true),
+          child: Text(label),
+        ),
       ),
     );
 
     Widget information(String label, {FocusNode? focusNode, VoidCallback? onPressed}) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: OutlinedButton(
-        focusNode: focusNode,
-        onPressed: onPressed ?? () {},
-        child: Align(alignment: Alignment.centerLeft, child: Text(label)),
+      child: focusAnnouncer(
+        label,
+        OutlinedButton(
+          focusNode: focusNode,
+          onPressed: onPressed ?? () {},
+          child: Align(alignment: Alignment.centerLeft, child: Text(label)),
+        ),
       ),
     );
 
@@ -1194,16 +1227,22 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           action('Open Messages', 'https://www.torn.com/messages.php'),
           action('Open Faction', 'https://www.torn.com/factions.php?step=your'),
           const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: () {
-              _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh-button');
-            },
-            child: const Text('Refresh status'),
+          focusAnnouncer(
+            'Refresh status',
+            ElevatedButton(
+              onPressed: () {
+                _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh-button');
+              },
+              child: const Text('Refresh status'),
+            ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _copyWindowsDiagnostics,
-            child: const Text('Copy focus diagnostic report'),
+          focusAnnouncer(
+            'Copy focus diagnostic report',
+            ElevatedButton(
+              onPressed: _copyWindowsDiagnostics,
+              child: const Text('Copy focus diagnostic report'),
+            ),
           ),
           const SizedBox(height: 16),
           const Text('End of accessible home'),

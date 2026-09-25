@@ -133,7 +133,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
 std::string FlutterWindow::FocusReport() const {
   std::ostringstream report;
-  report << "Torn PDA focus diagnostic test 10\n"
+  report << "Torn PDA focus diagnostic test 11\n"
          << "Native focus and navigation events only; no account data or typed text.\n";
   for (const auto& event : focus_events_) report << event << '\n';
   return report.str();
@@ -155,7 +155,7 @@ void FlutterWindow::RecordFocusEvent(const std::string& event) {
   if (length == 0 || length >= 32768) return;
   const std::wstring directory = std::wstring(local_data) + L"\\TornPDA";
   CreateDirectoryW(directory.c_str(), nullptr);
-  std::ofstream output(directory + L"\\focus-test10.txt", std::ios::trunc);
+  std::ofstream output(directory + L"\\focus-test11.txt", std::ios::trunc);
   if (output) output << FocusReport();
 }
 
