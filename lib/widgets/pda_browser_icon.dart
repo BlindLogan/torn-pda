@@ -35,12 +35,18 @@ class PdaBrowserIcon extends StatelessWidget {
               return const SizedBox.shrink();
             },
           ),
-          GestureDetector(
-            child: Image.asset(
-              'images/icons/torn_pda_browser.png',
-              width: 25,
-              color: color,
-            ),
+          Semantics(
+            button: true,
+            label: 'Open Torn browser',
+            child: InkWell(
+              canRequestFocus: true,
+              child: ExcludeSemantics(
+                child: Image.asset(
+                  'images/icons/torn_pda_browser.png',
+                  width: 25,
+                  color: color,
+                ),
+              ),
             onTap: () {
               context.read<WebViewProvider>().pdaIconActivation(
                     shortTap: true,
@@ -61,6 +67,7 @@ class PdaBrowserIcon extends StatelessWidget {
 
               Get.find<ChainStatusController>().statusUpdateSource = "provider";
             },
+            ),
           ),
         ],
       ),

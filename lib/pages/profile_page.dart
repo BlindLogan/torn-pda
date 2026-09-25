@@ -14,6 +14,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:expandable/expandable.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
@@ -158,6 +159,59 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   late WebViewProvider _webViewProvider;
   final UserController _u = Get.find<UserController>();
   final WarController _w = Get.find<WarController>();
+
+  final FocusNode _windowsEnergyFocus = FocusNode(debugLabel: 'Energy');
+  final FocusNode _windowsNerveFocus = FocusNode(debugLabel: 'Nerve');
+  final FocusNode _windowsOcFocus = FocusNode(debugLabel: 'Organised Crime');
+  final FocusNode _windowsRankedWarFocus = FocusNode(debugLabel: 'Ranked War');
+  final FocusNode _windowsTravelFocus = FocusNode(debugLabel: 'Travel');
+  final FocusNode _windowsBoosterFocus = FocusNode(debugLabel: 'Booster cooldown');
+  final FocusNode _windowsDrugFocus = FocusNode(debugLabel: 'Drug cooldown');
+  final FocusNode _windowsMedicalFocus = FocusNode(debugLabel: 'Medical cooldown');
+  final FocusNode _windowsLifeFocus = FocusNode(debugLabel: 'Life');
+  final FocusNode _windowsWalletFocus = FocusNode(debugLabel: 'Wallet');
+  bool _windowsWasInactive = false;
+  bool _windowsExplicitFocusAnnouncements = false;
+  static const _windowsAccessibilityChannel =
+      MethodChannel('torn_pda/windows_accessibility');
+
+  List<FocusNode> get _windowsStatusNodes => <FocusNode>[
+    _windowsWalletFocus, _windowsEnergyFocus, _windowsNerveFocus,
+    _windowsOcFocus, _windowsRankedWarFocus, _windowsTravelFocus,
+    _windowsBoosterFocus, _windowsDrugFocus, _windowsMedicalFocus, _windowsLifeFocus,
+  ];
+
+  void _activateWindowsStatusShortcut(int index) {
+    final nodes = _windowsStatusNodes;
+    if (index >= 0 && index < nodes.length &&
+        _apiGoodData && !_webViewProvider.browserShowInForeground) {
+      nodes[index].requestFocus();
+    }
+  }
+
+  Map<ShortcutActivator, VoidCallback> _windowsShortcutBindings() {
+    final nodes = _windowsStatusNodes;
+    final keys = <LogicalKeyboardKey>[
+      LogicalKeyboardKey.digit0, LogicalKeyboardKey.digit1, LogicalKeyboardKey.digit2,
+      LogicalKeyboardKey.digit3, LogicalKeyboardKey.digit4, LogicalKeyboardKey.digit5,
+      LogicalKeyboardKey.digit6, LogicalKeyboardKey.digit7, LogicalKeyboardKey.digit8,
+      LogicalKeyboardKey.digit9,
+    ];
+    return {
+      for (var index = 0; index < nodes.length; index++)
+        SingleActivator(keys[index], alt: true): () =>
+            _activateWindowsStatusShortcut(index),
+    };
+  }
+
+  void _announceWindowsFocusedControl(String label, bool focused) {
+    if (!focused || !_windowsExplicitFocusAnnouncements || !mounted) return;
+    unawaited(SemanticsService.sendAnnouncement(
+      View.of(context),
+      label,
+      Directionality.of(context),
+    ));
+  }
 
   late int _travelNotificationAhead;
   late int _travelAlarmAhead;
@@ -336,6 +390,14 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    if (Platform.isWindows) {
+      _windowsAccessibilityChannel.setMethodCallHandler((call) async {
+        if (call.method == 'altNumber' && call.arguments is int) {
+          _activateWindowsStatusShortcut(call.arguments as int);
+        }
+      });
+    }
+
     _retrievePendingNotifications();
 
     _profileApi.activate(
@@ -388,12 +450,30 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     _profileApi.deactivate();
     _browserHasClosedSubscription.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _windowsEnergyFocus.dispose();
+    _windowsNerveFocus.dispose();
+    _windowsOcFocus.dispose();
+    _windowsRankedWarFocus.dispose();
+    _windowsTravelFocus.dispose();
+    _windowsBoosterFocus.dispose();
+    _windowsDrugFocus.dispose();
+    _windowsMedicalFocus.dispose();
+    _windowsLifeFocus.dispose();
+    _windowsWalletFocus.dispose();
+    if (Platform.isWindows) _windowsAccessibilityChannel.setMethodCallHandler(null);
     super.dispose();
   }
 
   @override
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (Platform.isWindows) return;
+    if (Platform.isWindows) {
+      if (state == AppLifecycleState.inactive) {
+        _windowsWasInactive = true;
+      } else if (state == AppLifecycleState.resumed && _windowsWasInactive) {
+        _windowsExplicitFocusAnnouncements = true;
+      }
+      return;
+    }
 
     if (state == AppLifecycleState.resumed) {
       _profileApi.resetApiTimer(initCall: false, trigger: "lifecycle-resume");
@@ -411,7 +491,11 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
 
     return ShowCaseWidget(
       builder: (ctx) {
-        _launchShowCases(ctx);
+        // Showcase overlays are designed for touch navigation and can take
+        // keyboard focus away from Windows screen readers.
+        if (!Platform.isWindows) {
+          _launchShowCases(ctx);
+        }
         return Scaffold(
           backgroundColor: _themeProvider!.canvas,
           drawer: !_webViewProvider.splitScreenAndBrowserLeft() ? const Drawer() : null,
@@ -419,14 +503,22 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           bottomNavigationBar: !_settingsProvider!.appBarTop
               ? SizedBox(height: AppBar().preferredSize.height, child: buildAppBar())
               : null,
-          floatingActionButton: _hideProfileFab ? null : Stack(children: [buildSpeedDial()]),
+          // The mobile speed dial contains dynamically inserted focus targets
+          // that are unreliable with Windows screen readers. Its actions remain
+          // available through the labelled app bar and drawer controls.
+          floatingActionButton: Platform.isWindows || _hideProfileFab ? null : Stack(children: [buildSpeedDial()]),
           body: Container(
             color: _themeProvider!.canvas,
-            child: FutureBuilder(
+            child: FocusTraversalGroup(
+              policy: ReadingOrderTraversalPolicy(),
+              child: FutureBuilder(
               future: _apiFetched,
               builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
                 if (snapshot.connectionState == ConnectionState.done) {
                   if (_apiGoodData) {
+                    if (Platform.isWindows) {
+                      return _windowsAccessibleHome();
+                    }
                     return RefreshIndicator(
                       onRefresh: () async {
                         _profileApi.resetApiTimer(initCall: true, trigger: "pull-refresh");
@@ -537,6 +629,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                   );
                 }
               },
+              ),
             ),
           ),
         );
@@ -754,6 +847,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         children: [
           IconButton(
             icon: const Icon(Icons.menu),
+            tooltip: 'Open Torn PDA navigation menu',
             onPressed: () {
               final ScaffoldState? scaffoldState = context.findRootAncestorStateOfType();
               if (scaffoldState != null) {
@@ -827,6 +921,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           const SizedBox.shrink(),
         IconButton(
           icon: Icon(Icons.settings, color: _themeProvider!.buttonText),
+          tooltip: 'Open Profile settings',
           onPressed: () async {
             await Navigator.push(
               context,
@@ -922,6 +1017,191 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  Widget _windowsAccessibleHome() {
+    String durationLabel(int? seconds) {
+      if (seconds == null || seconds <= 0) return 'ready';
+      final hours = seconds ~/ 3600;
+      final minutes = (seconds % 3600) ~/ 60;
+      if (hours > 0) return '$hours hours $minutes minutes';
+      return '$minutes minutes';
+    }
+
+    Widget heading(String text) => Semantics(
+      header: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 8),
+        child: Text(text, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      ),
+    );
+
+    Widget focusAnnouncer(String label, Widget child) => Focus(
+      canRequestFocus: false,
+      descendantsAreFocusable: true,
+      onFocusChange: (focused) => _announceWindowsFocusedControl(label, focused),
+      child: child,
+    );
+
+    Widget action(String label, String url, {FocusNode? focusNode}) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: focusAnnouncer(
+        label,
+        ElevatedButton(
+          focusNode: focusNode,
+          onPressed: () => _launchBrowser(url: url, shortTap: true),
+          child: Text(label),
+        ),
+      ),
+    );
+
+    Widget information(String label, {FocusNode? focusNode, VoidCallback? onPressed}) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: focusAnnouncer(
+        label,
+        OutlinedButton(
+          focusNode: focusNode,
+          onPressed: onPressed ?? () {},
+          child: Align(alignment: Alignment.centerLeft, child: Text(label)),
+        ),
+      ),
+    );
+
+    final moneyFormat = NumberFormat('#,##0', 'en_US');
+    final wallet = _user!.moneyOnHand == null ? 'unavailable' : '\$${moneyFormat.format(_user!.moneyOnHand)}';
+
+    final statusDescription = _user!.status!.description?.trim();
+    final travelLabel = statusDescription == null || statusDescription.isEmpty
+        ? 'Travel status: ${_user!.status!.state}'
+        : 'Travel status: $statusDescription';
+
+    return CallbackShortcuts(
+      bindings: _windowsShortcutBindings(),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh');
+          await Future.delayed(const Duration(seconds: 1));
+        },
+        child: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+        children: [
+          heading('Torn PDA accessible home'),
+          information('${_user!.name}, level ${_user!.level}', onPressed: () {
+            _launchBrowser(url: 'https://www.torn.com/profiles.php?XID=${_user!.playerId}', shortTap: true);
+          }),
+          information('Status: ${_user!.status!.state}'),
+          information('Wallet: $wallet', focusNode: _windowsWalletFocus, onPressed: _openWalletDialog),
+          heading('Bars'),
+          information(
+            'Energy: ${_user!.energy!.current} of ${_user!.energy!.maximum}. Alt plus 1',
+            focusNode: _windowsEnergyFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true),
+          ),
+          information(
+            'Nerve: ${_user!.nerve!.current} of ${_user!.nerve!.maximum}. Alt plus 2',
+            focusNode: _windowsNerveFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true),
+          ),
+          information('Happy: ${_user!.happy!.current} of ${_user!.happy!.maximum}'),
+          information(
+            'Life: ${_user!.life!.current} of ${_user!.life!.maximum}. Alt plus 9',
+            focusNode: _windowsLifeFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/item.php#medical-items', shortTap: true),
+          ),
+          heading('Cooldowns'),
+          information(
+            'Drug cooldown: ${durationLabel(_user!.cooldowns!.drug)}. Alt plus 7',
+            focusNode: _windowsDrugFocus,
+          ),
+          information(
+            'Medical cooldown: ${durationLabel(_user!.cooldowns!.medical)}. Alt plus 8',
+            focusNode: _windowsMedicalFocus,
+          ),
+          information(
+            'Booster cooldown: ${durationLabel(_user!.cooldowns!.booster)}. Alt plus 6',
+            focusNode: _windowsBoosterFocus,
+          ),
+          heading('Faction and travel'),
+          information(
+            '${_windowsOrganisedCrimeLabel()}. Alt plus 3',
+            focusNode: _windowsOcFocus,
+            onPressed: () =>
+                _launchBrowser(url: 'https://www.torn.com/factions.php?step=your#/tab=crimes', shortTap: true),
+          ),
+          information(
+            '${_windowsRankedWarLabel()}. Alt plus 4',
+            focusNode: _windowsRankedWarFocus,
+            onPressed: () =>
+                _launchBrowser(url: 'https://www.torn.com/factions.php?step=your#/war/rank', shortTap: true),
+          ),
+          information(
+            '$travelLabel. Alt plus 5',
+            focusNode: _windowsTravelFocus,
+            onPressed: () => _launchBrowser(url: 'https://www.torn.com/travelagency.php', shortTap: true),
+          ),
+          heading('Quick access'),
+          action('Open Travel Agency', 'https://www.torn.com/travelagency.php'),
+          action('Open Gym', 'https://www.torn.com/gym.php'),
+          action('Open Crimes', 'https://www.torn.com/crimes.php#/step=main'),
+          action('Open Items', 'https://www.torn.com/item.php'),
+          action('Open Events', 'https://www.torn.com/events.php#/step=all'),
+          action('Open Messages', 'https://www.torn.com/messages.php'),
+          action('Open Faction', 'https://www.torn.com/factions.php?step=your'),
+          const SizedBox(height: 8),
+          focusAnnouncer(
+            'Refresh status',
+            ElevatedButton(
+              onPressed: () {
+                _profileApi.resetApiTimer(initCall: true, trigger: 'windows-accessible-refresh-button');
+              },
+              child: const Text('Refresh status'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('End of accessible home'),
+        ],
+      ),
+      ),
+    );
+  }
+
+  String _windowsOrganisedCrimeLabel() {
+    try {
+      final dynamic data = _oc2Model?.organizedCrime;
+      if (data is Map<String, dynamic>) {
+        final name = data['name']?.toString() ?? 'unnamed crime';
+        final slots = data['slots'];
+        String role = '';
+        String chance = '';
+        if (slots is List) {
+          for (final dynamic slot in slots) {
+            if (slot is Map && slot['user'] is Map && slot['user']['id'] == UserHelper.playerId) {
+              role = slot['position']?.toString() ?? '';
+              chance = slot['checkpoint_pass_rate']?.toString() ?? '';
+              break;
+            }
+          }
+        }
+        return 'Organised Crime: $name${role.isEmpty ? '' : ', role $role'}${chance.isEmpty ? '' : ', $chance percent pass rate'}';
+      }
+      if (_ocFinalStringLong.isNotEmpty) return 'Organised Crime: $_ocFinalStringLong';
+    } catch (_) {}
+    return 'Organised Crime: no information';
+  }
+
+  String _windowsRankedWarLabel() {
+    final war = _factionRankedWar?.war;
+    if (war == null) return 'Ranked War: no information';
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (war.end != null && war.end! > 0 && war.end! <= now) return 'Ranked War: ended';
+    if (war.start != null && war.start! > now) {
+      final remaining = war.start! - now;
+      final days = remaining ~/ 86400;
+      final hours = (remaining % 86400) ~/ 3600;
+      final minutes = (remaining % 3600) ~/ 60;
+      return 'Ranked War: starts in ${days > 0 ? '$days days ' : ''}$hours hours $minutes minutes';
+    }
+    return 'Ranked War: active';
   }
 
   Widget _shortcutsCarrousel() {
@@ -2023,50 +2303,60 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         children: <Widget>[
                           const SizedBox(width: 60, child: Text('Energy')),
                           const SizedBox(width: 10),
-                          GestureDetector(
-                            key: _showOne,
-                            onLongPress: () {
-                              _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: false);
-                            },
-                            onTap: () async {
-                              _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true);
-                            },
-                            child: Showcase(
-                              key: _showcaseProfileBars,
-                              title: 'Did you know?',
-                              description:
-                                  '\nTap any of the bars to launch a browser '
-                                  'straight to the gym, crimes or items sections!',
-                              targetPadding: const EdgeInsets.all(10),
-                              disableMovingAnimation: true,
-                              textColor: _themeProvider!.mainText,
-                              tooltipBackgroundColor: _themeProvider!.secondBackground,
-                              descTextStyle: const TextStyle(fontSize: 13),
-                              tooltipPadding: const EdgeInsets.all(20),
-                              child: LinearPercentIndicator(
-                                padding: const EdgeInsets.all(0),
-                                barRadius: const Radius.circular(10),
-                                width: 150,
-                                lineHeight: 20,
-                                progressColor: Colors.green,
-                                backgroundColor: Colors.grey,
-                                center: FittedBox(
-                                  fit: BoxFit.fitWidth,
-                                  child: Text(
-                                    '${_user!.energy!.current}/${_user!.energy!.maximum}',
-                                    style: const TextStyle(color: Colors.black),
+                          Semantics(
+                            button: true,
+                            label:
+                                'Energy ${_user!.energy!.current} of ${_user!.energy!.maximum}. Open gym',
+                            onTap: () => _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true),
+                            child: ExcludeSemantics(
+                              child: InkWell(
+                                canRequestFocus: true,
+                                key: _showOne,
+                                onLongPress: () {
+                                  _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: false);
+                                },
+                                onTap: () async {
+                                  _launchBrowser(url: 'https://www.torn.com/gym.php', shortTap: true);
+                                },
+                                child: Showcase(
+                                  key: _showcaseProfileBars,
+                                  title: 'Did you know?',
+                                  description:
+                                      '\nTap any of the bars to launch a browser '
+                                      'straight to the gym, crimes or items sections!',
+                                  targetPadding: const EdgeInsets.all(10),
+                                  disableMovingAnimation: true,
+                                  textColor: _themeProvider!.mainText,
+                                  tooltipBackgroundColor: _themeProvider!.secondBackground,
+                                  descTextStyle: const TextStyle(fontSize: 13),
+                                  tooltipPadding: const EdgeInsets.all(20),
+                                  child: LinearPercentIndicator(
+                                    padding: const EdgeInsets.all(0),
+                                    barRadius: const Radius.circular(10),
+                                    width: 150,
+                                    lineHeight: 20,
+                                    progressColor: Colors.green,
+                                    backgroundColor: Colors.grey,
+                                    center: FittedBox(
+                                      fit: BoxFit.fitWidth,
+                                      child: Text(
+                                        '${_user!.energy!.current}/${_user!.energy!.maximum}',
+                                        style: const TextStyle(color: Colors.black),
+                                      ),
+                                    ),
+                                    percent: _user!.energy!.current! / _user!.energy!.maximum! > 1.0
+                                        ? 1.0
+                                        : _user!.energy!.current! / _user!.energy!.maximum!,
                                   ),
                                 ),
-                                percent: _user!.energy!.current! / _user!.energy!.maximum! > 1.0
-                                    ? 1.0
-                                    : _user!.energy!.current! / _user!.energy!.maximum!,
                               ),
                             ),
                           ),
                           if (_warnAboutChains && _chainModel.chain!.current! > 10 && _chainModel.chain!.cooldown == 0)
                             Padding(
                               padding: const EdgeInsets.only(left: 5),
-                              child: GestureDetector(
+                              child: InkWell(
+                                canRequestFocus: true,
                                 onTap: () {
                                   // Open chaining section
                                   widget.callBackSection(DrawerSection.chaining);
@@ -2097,30 +2387,39 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                         children: <Widget>[
                           const SizedBox(width: 60, child: Text('Nerve')),
                           const SizedBox(width: 10),
-                          GestureDetector(
-                            onLongPress: () {
-                              _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: false);
-                            },
-                            onTap: () async {
-                              _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true);
-                            },
-                            child: LinearPercentIndicator(
-                              padding: const EdgeInsets.all(0),
-                              barRadius: const Radius.circular(10),
-                              width: 150,
-                              lineHeight: 20,
-                              progressColor: Colors.redAccent,
-                              backgroundColor: Colors.grey,
-                              center: FittedBox(
-                                fit: BoxFit.fitWidth,
-                                child: Text(
-                                  '${_user!.nerve!.current}/${_user!.nerve!.maximum}',
-                                  style: const TextStyle(color: Colors.black),
+                          Semantics(
+                            button: true,
+                            label:
+                                'Nerve ${_user!.nerve!.current} of ${_user!.nerve!.maximum}. Open crimes',
+                            onTap: () =>
+                                _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true),
+                            child: ExcludeSemantics(
+                              child: GestureDetector(
+                                onLongPress: () {
+                                  _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: false);
+                                },
+                                onTap: () async {
+                                  _launchBrowser(url: 'https://www.torn.com/crimes.php#/step=main', shortTap: true);
+                                },
+                                child: LinearPercentIndicator(
+                                  padding: const EdgeInsets.all(0),
+                                  barRadius: const Radius.circular(10),
+                                  width: 150,
+                                  lineHeight: 20,
+                                  progressColor: Colors.redAccent,
+                                  backgroundColor: Colors.grey,
+                                  center: FittedBox(
+                                    fit: BoxFit.fitWidth,
+                                    child: Text(
+                                      '${_user!.nerve!.current}/${_user!.nerve!.maximum}',
+                                      style: const TextStyle(color: Colors.black),
+                                    ),
+                                  ),
+                                  percent: _user!.nerve!.current! / _user!.nerve!.maximum! > 1.0
+                                      ? 1.0
+                                      : _user!.nerve!.current! / _user!.nerve!.maximum!,
                                 ),
                               ),
-                              percent: _user!.nerve!.current! / _user!.nerve!.maximum! > 1.0
-                                  ? 1.0
-                                  : _user!.nerve!.current! / _user!.nerve!.maximum!,
                             ),
                           ),
                         ],
@@ -3309,6 +3608,7 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               const Text('EVENTS', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(width: 8),
               InkWell(
+                canRequestFocus: true,
                 borderRadius: BorderRadius.circular(100),
                 onLongPress: () {
                   _launchBrowser(url: "https://www.torn.com/events.php#/step=all", shortTap: false);
@@ -3316,7 +3616,13 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 onTap: () {
                   _launchBrowser(url: 'https://www.torn.com/events.php#/step=all', shortTap: true);
                 },
-                child: const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.open_in_new, size: 18)),
+                child: Semantics(
+                  button: true,
+                  label: 'Open all events in Torn',
+                  child: const ExcludeSemantics(
+                    child: Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.open_in_new, size: 18)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -4552,17 +4858,20 @@ class ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       final moneyFormat = NumberFormat("#,##0", "en_US");
       return Row(
         children: [
-          GestureDetector(
+          Semantics(
+            button: true,
+            label: 'Wallet, ${moneyFormat.format(_user!.moneyOnHand)} dollars',
+            hint: 'Open wallet details',
+            child: InkWell(
+              canRequestFocus: true,
             onTap: () async {
               _openWalletDialog();
             },
-            child: Semantics(
-              label: 'Wallet icon',
-              value: '',
-              onTapHint: 'Open wallet dialog',
-              child: dense!
+              child: ExcludeSemantics(
+                child: dense!
                   ? const Icon(Icons.account_balance_wallet_rounded, size: 17, color: Colors.brown)
-                  : const Icon(MdiIcons.cash100, color: Colors.green),
+                    : const Icon(MdiIcons.cash100, color: Colors.green),
+              ),
             ),
           ),
           const SizedBox(width: 5),

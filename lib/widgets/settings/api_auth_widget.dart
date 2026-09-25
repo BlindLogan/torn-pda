@@ -315,6 +315,7 @@ class _ApiKeySectionWidgetState extends State<ApiKeySectionWidget> {
           maxLength: 30,
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
+            labelText: 'Torn API key',
             hintText: 'Please insert your Torn API Key',
             hintStyle: const TextStyle(fontSize: 14),
             counterText: "",
@@ -328,7 +329,7 @@ class _ApiKeySectionWidgetState extends State<ApiKeySectionWidget> {
           // This is here in case the user submits from the keyboard
           // and not hitting the "Load" button
           onEditingComplete: () {
-            FocusScope.of(context).requestFocus(FocusNode());
+            FocusManager.instance.primaryFocus?.unfocus();
             if (widget.formKey.currentState!.validate()) {
               String myCurrentKey = widget.apiKeyInputController.text.trim();
               myCurrentKey = _sanitizeApiKey(myCurrentKey);

@@ -95,7 +95,12 @@ class TctClockState extends State<TctClock> {
         break;
     }
 
-    return GestureDetector(
+    final clockLabel = 'Torn City time ${formatter.format(_currentTctTime)}. Open calendar';
+    return Semantics(
+      button: true,
+      label: clockLabel,
+      child: InkWell(
+      canRequestFocus: true,
       onTap: () {
         widget.onTap();
         _showToast();
@@ -104,7 +109,8 @@ class TctClockState extends State<TctClock> {
         widget.onLongPress();
         _showToast();
       },
-      child: Container(
+      child: ExcludeSemantics(
+        child: Container(
         // Shadow if an event or competition is active
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -144,6 +150,8 @@ class TctClockState extends State<TctClock> {
               ),
           ],
         ),
+        ),
+      ),
       ),
     );
   }
