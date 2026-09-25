@@ -8,6 +8,7 @@ import 'package:android_intent_plus/android_intent.dart';
 import 'package:animations/animations.dart';
 import 'package:bot_toast/bot_toast.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:get/get.dart';
@@ -21,6 +22,7 @@ import 'package:torn_pda/models/travel/travel_model.dart';
 import 'package:torn_pda/pages/travel/foreign_stock_page.dart';
 import 'package:torn_pda/pages/travel/travel_options_android.dart';
 import 'package:torn_pda/pages/travel/travel_options_ios.dart';
+import 'package:torn_pda/pages/travel/travel_options_windows.dart';
 import 'package:torn_pda/providers/api/api_utils.dart';
 import 'package:torn_pda/providers/api/api_v1_calls.dart';
 import 'package:torn_pda/providers/settings_provider.dart';
@@ -68,6 +70,9 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
 
   Future? _finishedLoadingPreferences;
 
+  bool _windowsWasInactive = false;
+  bool _windowsExplicitFocusAnnouncements = false;
+
   @override
   void initState() {
     super.initState();
@@ -92,7 +97,15 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
 
   @override
   Future<void> didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (Platform.isWindows) return;
+    if (Platform.isWindows) {
+      if (state == AppLifecycleState.inactive) {
+        _windowsWasInactive = true;
+      } else if (state == AppLifecycleState.resumed && _windowsWasInactive) {
+        _windowsExplicitFocusAnnouncements = true;
+        _updateInformation();
+      }
+      return;
+    }
 
     if (state == AppLifecycleState.resumed) {
       _updateInformation();
@@ -104,6 +117,10 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     _themeProvider = Provider.of<ThemeProvider>(context);
     _webViewProvider = Provider.of<WebViewProvider>(context);
+
+    if (Platform.isWindows) {
+      return _buildWindowsTravel();
+    }
 
     return Scaffold(
       backgroundColor: _themeProvider.canvas,
@@ -192,6 +209,283 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
           } else {
             return const SizedBox.shrink();
           }
+        },
+      ),
+    );
+  }
+
+  void _announceWindowsTravelControl(String label, bool focused) {
+    if (!focused || !_windowsExplicitFocusAnnouncements || !mounted) return;
+    unawaited(SemanticsService.sendAnnouncement(
+      View.of(context),
+      label,
+      Directionality.of(context),
+    ));
+  }
+
+  Widget _windowsFocusAnnouncer(String label, Widget child) {
+    return Focus(
+      canRequestFocus: false,
+      descendantsAreFocusable: true,
+      onFocusChange: (focused) => _announceWindowsTravelControl(label, focused),
+      child: child,
+    );
+  }
+
+  Widget _windowsTravelButton(String label, VoidCallback onPressed) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _windowsFocusAnnouncer(
+        label,
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: onPressed,
+            child: Align(alignment: Alignment.centerLeft, child: Text(label)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _windowsTravelInformation(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _windowsFocusAnnouncer(
+        label,
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: () {},
+            child: Align(alignment: Alignment.centerLeft, child: Text(label)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _windowsTimeRemaining() {
+    final seconds = _travelModel.timeLeft ?? 0;
+    if (seconds <= 0) return 'Arriving now';
+    final days = seconds ~/ 86400;
+    final hours = (seconds % 86400) ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final remainder = seconds % 60;
+    final parts = <String>[];
+    if (days > 0) parts.add('$days ${days == 1 ? 'day' : 'days'}');
+    if (hours > 0) parts.add('$hours ${hours == 1 ? 'hour' : 'hours'}');
+    if (minutes > 0) parts.add('$minutes ${minutes == 1 ? 'minute' : 'minutes'}');
+    if (parts.isEmpty || (days == 0 && hours == 0)) {
+      parts.add('$remainder ${remainder == 1 ? 'second' : 'seconds'}');
+    }
+    return parts.join(', ');
+  }
+
+  String _windowsArrivalTime() {
+    final arrival = _travelModel.timeArrival;
+    if (arrival == null) return 'unavailable';
+    final formattedTime = TimeFormatter(
+      inputTime: arrival,
+      timeFormatSetting: _settingsProvider!.currentTimeFormat,
+      timeZoneSetting: _settingsProvider!.currentTimeZone,
+    ).formatHour;
+    final local = arrival.toLocal();
+    return '$formattedTime on ${local.day}/${local.month}/${local.year}';
+  }
+
+  Future<void> _windowsOpenTorn(String url) async {
+    await context.read<WebViewProvider>().openBrowserPreference(
+      context: context,
+      url: url,
+      browserTapType: BrowserTapType.short,
+    );
+    _updateInformation();
+  }
+
+  Future<void> _windowsOpenForeignStocks() async {
+    final result = await Navigator.of(context).push<ReturnFlagPressed>(
+      MaterialPageRoute(
+        builder: (context) => ForeignStockPage(apiKey: _myCurrentKey),
+      ),
+    );
+    if (result != null) await _onStocksPageClosed(result);
+  }
+
+  Future<void> _windowsSetTravelNotification() async {
+    try {
+      final value = await _scheduleNotification();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Travel notification set'),
+          content: Text('Notification scheduled for ${_formatTime(value)}.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Unable to set travel notification'),
+          content: Text('$error'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _windowsCancelTravelNotification() async {
+    await _cancelTravelNotification();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Travel notification cancelled'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _windowsTravelContent(BuildContext scaffoldContext) {
+    final items = <Widget>[
+      Semantics(
+        header: true,
+        child: const Padding(
+          padding: EdgeInsets.only(bottom: 14),
+          child: Text(
+            'Travel',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    ];
+
+    if (_myCurrentKey == '') {
+      items.add(_windowsTravelInformation(
+        'Torn API key not found. Configure your API key in Settings.',
+      ));
+    } else if (_apiError) {
+      items.add(_windowsTravelInformation(
+        'Unable to retrieve travel information. $_errorReason',
+      ));
+    } else if (!_travelModel.abroad) {
+      items.add(_windowsTravelInformation('Current location: Torn City'));
+      items.add(_windowsTravelInformation('Travel status: Not travelling'));
+    } else {
+      final destination = _travelModel.destination ?? 'unknown destination';
+      final timeLeft = _travelModel.timeLeft ?? 0;
+      final arrivedAbroad = destination != 'Torn' && timeLeft < 15;
+      if (arrivedAbroad) {
+        items.add(_windowsTravelInformation('Current location: $destination'));
+        items.add(_windowsTravelInformation('Travel status: Arrived'));
+      } else {
+        final destinationLabel = destination == 'Torn' ? 'Torn City' : destination;
+        items.add(_windowsTravelInformation(
+          'Travel status: Travelling to $destinationLabel',
+        ));
+        items.add(_windowsTravelInformation(
+          'Time remaining: ${_windowsTimeRemaining()}',
+        ));
+        items.add(_windowsTravelInformation(
+          'Expected arrival: ${_windowsArrivalTime()}',
+        ));
+      }
+    }
+
+    items.add(const SizedBox(height: 8));
+    items.add(_windowsTravelButton('Refresh travel status', _updateInformation));
+
+    if (_myCurrentKey != '' && !_apiError && !_travelModel.abroad) {
+      items.add(_windowsTravelButton(
+        'Open Torn travel agency',
+        () => _windowsOpenTorn('https://www.torn.com/travelagency.php'),
+      ));
+    } else {
+      items.add(_windowsTravelButton(
+        'Open Torn',
+        () => _windowsOpenTorn('https://www.torn.com'),
+      ));
+    }
+
+    items.add(_windowsTravelButton(
+      'View overseas item stock levels',
+      _windowsOpenForeignStocks,
+    ));
+
+    if (_travelModel.abroad && (_travelModel.timeLeft ?? 0) > 120) {
+      items.add(_windowsTravelButton(
+        _notificationsPending
+            ? 'Cancel travel notification'
+            : 'Set travel notification',
+        _notificationsPending
+            ? _windowsCancelTravelNotification
+            : _windowsSetTravelNotification,
+      ));
+    }
+
+    items.add(_windowsTravelButton(
+      'Travel notification settings',
+      () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => TravelOptionsWindows(
+            callback: _callBackFromTravelOptions,
+          ),
+        ),
+      ),
+    ));
+
+    items.add(_windowsTravelButton(
+      'Open Torn PDA navigation menu',
+      () => Scaffold.of(scaffoldContext).openDrawer(),
+    ));
+    items.add(const SizedBox(height: 12));
+    items.add(const Text('End of travel information'));
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      children: items,
+    );
+  }
+
+  Widget _buildWindowsTravel() {
+    return Scaffold(
+      backgroundColor: _themeProvider.canvas,
+      drawer: const Drawer(),
+      appBar: AppBar(
+        title: const Text('Travel', style: TextStyle(color: Colors.white)),
+        automaticallyImplyLeading: false,
+      ),
+      body: FutureBuilder(
+        future: _finishedLoadingPreferences,
+        builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(
+              child: Semantics(
+                label: 'Loading travel information',
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+          return Builder(
+            builder: (scaffoldContext) => _windowsTravelContent(scaffoldContext),
+          );
         },
       ),
     );
@@ -974,6 +1268,7 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
     final platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       iOS: iOSPlatformChannelSpecifics,
+      windows: const WindowsNotificationDetails(),
     );
 
     var notificationTitle = await Prefs().getTravelNotificationTitle();
@@ -1010,15 +1305,11 @@ class TravelPageState extends State<TravelPage> with WidgetsBindingObserver {
   }
 
   Future<void> _cancelTravelNotification() async {
-    if (Platform.isWindows) return;
-
     await flutterLocalNotificationsPlugin.cancel(201);
     _retrievePendingNotifications();
   }
 
   Future<void> _retrievePendingNotifications() async {
-    if (Platform.isWindows) return;
-
     final pendingNotificationRequests = await flutterLocalNotificationsPlugin.pendingNotificationRequests();
 
     var pending = false;
